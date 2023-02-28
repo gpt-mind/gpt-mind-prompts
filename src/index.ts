@@ -39,6 +39,11 @@ function extractReplacementTokens(inputStr: string) {
     return tokens;
 }
 
+/**
+ * get a function that will replace {{tokens}} in a string with values from a params object
+ * @param prompt the prompt string to replace tokens in
+ * @returns the replacement function
+ */
 export function getPromptReplacementFunction(prompt: string) {
     return (params: any) => {
         let output = prompt;
@@ -50,6 +55,12 @@ export function getPromptReplacementFunction(prompt: string) {
     };
 }
 
+/**
+ * validate a prompt string against a params object
+ * @param prompt the prompt string to validate
+ * @param params the params object to validate against
+ * @returns true if all required tokens are present in the params object, false otherwise
+ */
 export function validatePrompt(prompt: string, params: any) {
     const tokens: any = extractReplacementTokens(prompt);
     for (const token of tokens) {
@@ -60,7 +71,7 @@ export function validatePrompt(prompt: string, params: any) {
     return true;
 }
 
-const defaultSettings = {
+export const defaultSettings = {
     maxTokens: 256,
     temperature: 0.7,
     topP: 1,
@@ -73,11 +84,18 @@ const defaultSettings = {
     engine: "davinci",
 };
 
+/**
+ * @function getPromptDefinition
+ * @description This function gets the prompt definition object based on a given prompt string. It extracts replacement tokens from the prompt string, and creates an object with properties for prompt, params, validate, replace and complete. The validate property checks if all required parameters are present in the params object. The replace property replaces all replacement tokens in the prompt string with their corresponding values from the params object. The complete property uses an OpenAI API to complete the given prompt with a valid response.
+ * @param {string} prompt
+ * @returns {object} prompt definition object
+ */
 export function getPromptDefinition(prompt: string) {
     const tokens: any = extractReplacementTokens(prompt);
     return {
         prompt,
         params: tokens,
+        // validate the params object to make sure all required params are present
         validate: (params: any) => {
             for (const token of tokens) {
                 if (!params[token]) {
@@ -86,6 +104,7 @@ export function getPromptDefinition(prompt: string) {
             }
             return true;
         },
+        // replace all replacement tokens in the prompt string with their corresponding values from the params object
         replace: (params: any) => {
             let output = prompt;
             let keys = Object.keys(params);
@@ -94,6 +113,7 @@ export function getPromptDefinition(prompt: string) {
             }
             return output;
         },
+        // use the OpenAI API to complete the given prompt with a valid response. concats the last line of the prompt with the response
         complete: async function (params: any, apiKey: string, settings: CompletionOpts | undefined) {
             if (!this.validate(params)) {
                 throw new Error(`Invalid params for prompt: ${this.prompt}: ${JSON.stringify(params)}`);
@@ -108,7 +128,10 @@ export function getPromptDefinition(prompt: string) {
     };
 }
 
-export function getPromptDefinitionList() {
+/**
+ * get the prompt definiitions for all the prompts in this file
+ */
+export function getPromptDefinitions() {
     const promptDefinitions = [];
     for (const prompt of Object.keys(prompts)) {
         promptDefinitions.push(getPromptDefinition(prompts[prompt]));
