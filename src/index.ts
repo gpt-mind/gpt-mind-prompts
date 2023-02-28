@@ -1,3 +1,5 @@
+import OpenAI, { CompletionOpts } from "openai-api";
+
 export const prompts: any = {
     "meaningOfStatement": `What is the meaning of the statement "{{statement}}"? Please respond in a single sentence. Answer on a SINGLE LINE ONLY using a JSON object with the following format: { "meaning": "insert meaning here" }\nFOR EXAMPLE\n{ "meaning": "The earth revolves around the sun." }\nANOTHER EXAMPLE\n{ "meaning": "Water is composed of two hydrogen atoms and one oxygen atom." }\nYOUR ANSWER\n{ "meaning": "`,
     "provideEvidence": `Provide evidence or examples to support the statement "{{statement}}"? Please provide at least one example or piece of evidence. Answer on A SINGLE LINE ONLY using a JSON object with the following format: { "evidence": "insert evidence here" }\nFOR EXAMPLE\n{ "evidence": "According to NASA, the earth orbits around the sun once every 365.24 days." }\nANOTHER EXAMPLE\n{ "evidence": "The molecular formula for water is H2O, which means it contains two hydrogen atoms and one oxygen atom." }\nYOUR ANSWER\n{ "evidence": "`,
@@ -58,6 +60,19 @@ export function validatePrompt(prompt: string, params: any) {
     return true;
 }
 
+const defaultSettings = {
+    maxTokens: 256,
+    temperature: 0.7,
+    topP: 1,
+    frequencyPenalty: 0.5,
+    presencePenalty: 0.5,
+    bestOf: 1,
+    n: 1,
+    stream: false,
+    stop: ["\n"],
+    engine: "davinci",
+};
+
 export function getPromptDefinition(prompt: string) {
     const tokens: any = extractReplacementTokens(prompt);
     return {
@@ -78,6 +93,17 @@ export function getPromptDefinition(prompt: string) {
                 output = output.replace(`{{${key}}}`, params[key]);
             }
             return output;
+        },
+        complete: async function (params: any, apiKey: string, settings: CompletionOpts | undefined) {
+            if (!this.validate(params)) {
+                throw new Error(`Invalid params for prompt: ${this.prompt}: ${JSON.stringify(params)}`);
+            }
+            const _settings: any = Object.assign({}, defaultSettings, settings || {});
+            const openapi = new OpenAI(apiKey);
+            const prompt = this.replace(params);
+            _settings.prompt = prompt;
+            const response = await openapi.complete(_settings);
+            return (response.data.choices[0] || { text: undefined}).text;
         }
     };
 }
