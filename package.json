@@ -1,6 +1,6 @@
 {
   "name": "@gpt-mind/prompts",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A collection of prompts for the gpt-mind library",
   "main": "dist/index.js",
   "scripts": {
