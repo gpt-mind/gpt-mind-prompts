@@ -12,15 +12,22 @@ npm install @gpt-mind/prompts
 
 ```js
 const prompts = require('@gpt-mind/prompts');
-const definition = prompts.getPromptDefinition(prompts.meaningOfStatement);
 
-const params = {
-  statement: 'The sky is blue.',
+
+const definition = prompts.getPromptDefinition(`given the following three statements:
+"{{statement1}}"
+"{{statement2}}", and 
+"{{statement3}}", which top two statements are most likely to be true?`);
+
+const statements = {
+  statement1: 'The sky is blue.',
+  statement2: 'The sky is green.',
+  statement3: 'The sky is red.',
 };
 
-if (definition.validate(params)) {
-  const completedPrompt = await definition.complete(params, apiKey);
-  console.log(definition.replace(params) + completedPrompt);
+if (definition.validate(statements)) { // check that all required params are present
+  const response = await definition.complete(params, apiKey, {}, ['mostlikely', 'nextmostlikely']);
+  console.log(response); // { "mostlikely": "The sky is blue.", "nextmostlikely": "The sky is green." }
 }
 ```
 
@@ -61,6 +68,7 @@ A function that uses the OpenAI API to complete the given prompt with a valid re
 - params - An object containing the parameter values.
 - apiKey - A string representing the API key to use for the OpenAI API.
 - settings - An optional object containing additional settings to use for the OpenAI API.
+- responseFields - An optional array of strings representing the fields to return from the OpenAI API response. Defaults to ['results'].
 Returns a Promise that resolves to a string representing the completed prompt.
 
 ## Example Usage
@@ -109,3 +117,50 @@ if (promptDefinition.validate(params)) {
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+
+
+
+
+
+------
+summary with usage:
+
+
+# GPT Mind Prompts
+
+A library for generating prompts for the [GPT-3](https://openai.com/blog/openai-api/) API. contains a number of pre-generated prompts as well as a function for generating your own. The function allows you to create prompts with replacement tokens that can be replaced with values from a params object, giving an easy programmatic interface for calling propmpts.
+
+## Installing
+
+```bash
+npm install @gpt-mind/prompts
+```
+
+## Usage
+
+### Example 1
+```js
+const prompts = require('@gpt-mind/prompts');
+const definition = prompts.getPromptDefinition(prompts.meaningOfStatement);
+
+const params = {
+  statement: 'The sky is blue.',
+};
+
+if (definition.validate(params)) {
+  const completedPrompt = await definition.complete(params, apiKey);
+  console.log(definition.replace(params) + completedPrompt);
+}
+```
+
+### Example 2
+```js
+const prompts = require('@gpt-mind/prompts');
+const definition = prompts.getPromptDefinition(`My name is {{name}} and I like {{food}}.`);
+const params = { name: 'John', food: 'pizza' };
+
+if (definition.validate(params)) {
+  const completedPrompt = await definition.complete(params, apiKey);
+  console.log(definition.replace(params) + completedPrompt);
+}
+```

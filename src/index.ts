@@ -1,5 +1,10 @@
-import OpenAI, { CompletionOpts } from "openai-api";
+// author: @sschepis
 
+import OpenAI from "openai-api";
+
+/**
+ * standard prompt set for basic unary, binary, and ternary statements
+ */
 export const prompts: any = {
     "meaningOfStatement": `What is the meaning of the statement "{{statement}}"? Please respond in a single sentence. Answer on a SINGLE LINE ONLY using a JSON object with the following format: { "meaning": "insert meaning here" }\nFOR EXAMPLE\n{ "meaning": "The earth revolves around the sun." }\nANOTHER EXAMPLE\n{ "meaning": "Water is composed of two hydrogen atoms and one oxygen atom." }\nYOUR ANSWER\n{ "meaning": "`,
     "provideEvidence": `Provide evidence or examples to support the statement "{{statement}}"? Please provide at least one example or piece of evidence. Answer on A SINGLE LINE ONLY using a JSON object with the following format: { "evidence": "insert evidence here" }\nFOR EXAMPLE\n{ "evidence": "According to NASA, the earth orbits around the sun once every 365.24 days." }\nANOTHER EXAMPLE\n{ "evidence": "The molecular formula for water is H2O, which means it contains two hydrogen atoms and one oxygen atom." }\nYOUR ANSWER\n{ "evidence": "`,
@@ -28,27 +33,37 @@ export const prompts: any = {
     "thoughtFeelings": `Consider the following thoughts:\n\n{{thoughts}}\n\nAnd the following emotions:\n\n{{emotions}}}\n\nPlease provide a new list of emotions and their corresponding intensities, each rated on a scale from 1 (low intensity) to 10 (high intensity), that best describe how you are feeling in response to these thoughts.\n\nAnswer on A SINGLE LINE ONLY using a JSON object with the following format: { "emotions": { "emotion1": intensity1, "emotion2": intensity2, ... } }\n\nFOR EXAMPLE\nConsider the following thoughts:\n\nI feel really excited about this new project I'm working on.\nI'm also feeling a bit nervous because it's a big undertaking.\nBut I'm confident that if I work hard, I can make it a success.\n\nPlease provide a new list of emotions and their corresponding intensities, each rated on a scale from 1 (low intensity) to 10 (high intensity), that best describe how you are feeling in response to these thoughts.\n\n{ "emotions": { "excitement": 8, "nervousness": 6, "confidence": 7 } }\n\nYOUR ANSWER\n{ "emotions": { "`
 }
 
-// extract a list of {{tokens}} from a string, returning an array of strings in the order they appear in the string
-function extractReplacementTokens(inputStr: string) {
+/**
+ * extract replacement tokens from a string
+ * @param inputStr the string to extract tokens from
+ * @returns an array of tokens
+ */
+export function extractReplacementTokens(inputStr: string): string[] {
     const regex = /\{\{([^}]+)\}\}/g;
-    const tokens = [];
+    const tokens: string[] = [];
     let match;
     while ((match = regex.exec(inputStr)) !== null) {
-        tokens.push(match[1]);
+        if(match[1]) tokens.push(match[1]);
     }
     return tokens;
 }
 
 /**
- * get a function that will replace {{tokens}} in a string with values from a params object
- * @param prompt the prompt string to replace tokens in
- * @returns the replacement function
+ * get a function that will replace tokens in a string with values from an object
+ * @param prompt the string to replace tokens in
+ * @param arrayJoin the  string to join array values with
+ * @param quote the string to quote array values with
+ * @returns a function that takes an object and returns a string
  */
-export function getPromptReplacementFunction(prompt: string) {
-    return (params: any) => {
+export function getPromptReplacementFunction(prompt: any, arrayJoin = ",", quote = '"') {
+    return (params: { [x: string]: any; }) => {
         let output = prompt;
-        let keys = Object.keys(params);
+        const keys = Object.keys(params);
         for (const key of keys) {
+            let val = params[key];
+            if (Array.isArray(val)) {
+                val = `${quote}${val.join(`${quote}${arrayJoin}${quote}`)}${quote}`;
+            }
             output = output.replace(`{{${key}}}`, params[key]);
         }
         return output;
@@ -56,21 +71,25 @@ export function getPromptReplacementFunction(prompt: string) {
 }
 
 /**
- * validate a prompt string against a params object
- * @param prompt the prompt string to validate
- * @param params the params object to validate against
- * @returns true if all required tokens are present in the params object, false otherwise
+ * validate that all tokens in a prompt have been replaced
+ * @param prompt the prompt to validate
+ * @param params the params to validate against
+ * @returns true if all tokens have been replaced, or an array of missing tokens
  */
-export function validatePrompt(prompt: string, params: any) {
-    const tokens: any = extractReplacementTokens(prompt);
+export function validatePrompt(prompt: any, params: { [x: string]: any; }) {
+    const missing = [];
+    const tokens = extractReplacementTokens(prompt);
     for (const token of tokens) {
         if (!params[token]) {
-            return false;
+            missing.push(token);
         }
     }
-    return true;
+    return missing.length ? true : missing;
 }
 
+/**
+ * the default openai settings
+ */
 export const defaultSettings = {
     maxTokens: 256,
     temperature: 0.7,
@@ -81,79 +100,65 @@ export const defaultSettings = {
     n: 1,
     stream: false,
     stop: ["\n"],
-    engine: "davinci",
+    engine: "text-davinci-003",
 };
 
 /**
- * @function getPromptDefinition
- * @description This function gets the prompt definition object based on a given prompt string. It extracts replacement tokens from the prompt string, and creates an object with properties for prompt, params, validate, replace and complete. The validate property checks if all required parameters are present in the params object. The replace property replaces all replacement tokens in the prompt string with their corresponding values from the params object. The complete property uses an OpenAI API to complete the given prompt with a valid response.
- * @param {string} prompt
- * @returns {object} prompt definition object
+ * build the example attachment for a prompt
+ * @param responseFields the fields that will be returned in the response
+ * @returns the example attachment
+ */
+export function buildExampleAttachment(responseFields: any) {
+    const fields = responseFields.reduce((acc: any, field: any) => {
+        acc[field] = `<${field}>`;
+        return acc;
+    }, {} );
+    const p = `  Respond using a JSON object with the following fields: ${responseFields.join(', ')}  For example:\n${JSON.stringify(fields)}\nYour response\n{"${responseFields[0]}":`;
+    return p.replace(/\\(?!n)/g, '');
+}
+
+/**
+ * get the prompt definition for a given prompt
+ * @param prompt the prompt to get the definition for
+ * @returns the prompt definition
  */
 export function getPromptDefinition(prompt: string) {
-    const tokens: any = extractReplacementTokens(prompt);
+    const tokens = extractReplacementTokens(prompt);
     return {
-        prompt,
-        params: tokens,
-        // validate the params object to make sure all required params are present
-        validate: (params: any) => {
-            for (const token of tokens) {
-                if (!params[token]) {
-                    return false;
-                }
-            }
-            return true;
+        prompt, // the prompt
+        params: tokens, // the tokens to replace
+        // validate that all tokens have been replaced
+        validate: (params: { [x: string]: any; }) => {
+            validatePrompt(prompt, params);
         },
-        // replace all replacement tokens in the prompt string with their corresponding values from the params object
-        replace: (params: any) => {
+        // replace tokens in the prompt with values from an object
+        replace: (params: { [x: string]: any; }) => {
             let output = prompt;
-            let keys = Object.keys(params);
+            const keys = Object.keys(params);
             for (const key of keys) {
                 output = output.replace(`{{${key}}}`, params[key]);
             }
             return output;
         },
-        // use the OpenAI API to complete the given prompt with a valid response. concats the last line of the prompt with the response
-        complete: async function (params: any, apiKey: string, settings: CompletionOpts | undefined) {
-            if (!this.validate(params)) {
-                throw new Error(`Invalid params for prompt: ${this.prompt}: ${JSON.stringify(params)}`);
-            }
-            const _settings: any = Object.assign({}, defaultSettings, settings || {});
+        // complete the prompt. returns a JSON object with the response fields
+        async complete(params: any, apiKey: any, settings: any, responseFields = ['result']) {
+            this.validate(params)
+            const _settings = Object.assign({}, defaultSettings, settings || {});
             const openapi = new OpenAI(apiKey);
-            const prompt = this.replace(params);
-            _settings.prompt = prompt;
-            const response = await openapi.complete(_settings);
-            return (response.data.choices[0] || { text: undefined}).text;
+            _settings.prompt = this.replace(params);
+            const ex = buildExampleAttachment(responseFields);
+            _settings.prompt = `${_settings.prompt}${ex}`;
+            let response: any = await openapi.complete(_settings);
+            response = response.data.choices[0].text;
+            let requestLP: any = ex.split('\n');
+            requestLP = requestLP[requestLP.length-1];
+            requestLP = requestLP.replace(/\\(?!n)/g, '')
+            const parsedResponse = JSON.parse(`${requestLP}${response}`);
+            const result: any = responseFields.reduce((acc: any, field: any) => {
+                acc[field] = parsedResponse[field];
+                return acc;
+            }, {} );
+            return result;
         }
     };
-}
-
-/**
- * get the prompt definiitions for all the prompts in this file
- */
-export function getPromptDefinitions() {
-    const promptDefinitions = [];
-    for (const prompt of Object.keys(prompts)) {
-        promptDefinitions.push(getPromptDefinition(prompts[prompt]));
-    }
-
-    // validate the prompts
-    for (const promptDefinition of promptDefinitions) {
-        const promptDef = promptDefinition;
-        // get all the prompt replacement tokens
-        const tokens: any = extractReplacementTokens(promptDef.prompt);
-        // create dummy data for each token
-        const params: any = {};
-        for (const token of tokens) {
-            params[token] = token;
-        }
-        // validate the prompt
-        if (!promptDef.validate(params)) {
-            throw new Error(`Invalid prompt: ${promptDef.prompt}`);
-        }
-        // replace the prompt
-        promptDef.prompt = promptDef.replace(params);
-        // show the prompt
-        console.log(promptDef.prompt);
-    }
 }
